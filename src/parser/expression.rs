@@ -1,81 +1,111 @@
+use crate::lexer::span::Span;
 use crate::lexer::token::Token;
-use crate::parser::Expression::Infix;
-use crate::parser::Precedence::{Lowest, Prefix};
+use crate::parser::Precedence::Lowest;
 use crate::parser::parser::{MAX_DEPTH, Parser};
 use crate::parser::statement::{FunParam, MatchArm};
 use crate::parser::types::Type;
 use crate::parser::{ParseError, Precedence, Statement};
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expression {
-    Identifier(String),
+    Identifier {
+        name: String,
+        span: Span,
+    },
 
-    IntLiteral(isize),
-    FloatLiteral(f64),
-    BoolLiteral(bool),
-    StringLiteral(String),
+    IntLiteral {
+        val: isize,
+        span: Span,
+    },
+
+    FloatLiteral {
+        val: f64,
+        span: Span,
+    },
+
+    BoolLiteral {
+        val: bool,
+        span: Span,
+    },
+
+    StringLiteral {
+        val: String,
+        span: Span,
+    },
 
     StructLiteral {
         name: String,
         fields: Vec<StructLiteralField>,
+        span: Span,
     },
 
     Prefix {
         operator: Token,
         right: Box<Expression>,
+        span: Span,
     },
 
     Infix {
         left: Box<Expression>,
         operator: Token,
         right: Box<Expression>,
+        span: Span,
     },
 
     Postfix {
         left: Box<Expression>,
         operator: Token,
+        span: Span,
     },
 
     Index {
         left: Box<Expression>,
         index: Box<Expression>,
+        span: Span,
     },
 
     Call {
         function: Box<Expression>,
         args: Vec<Expression>,
+        span: Span,
     },
 
     Block {
         body: Vec<Statement>,
+        span: Span,
     },
 
     Match {
         target: Box<Expression>,
         arms: Vec<MatchArm>,
+        span: Span,
     },
 
     Field {
         object: Box<Expression>,
         name: String,
+        span: Span,
     },
 
     MethodCall {
         object: Box<Expression>,
         name: String,
         args: Vec<Expression>,
+        span: Span,
     },
 
     Lambda {
         params: Vec<FunParam>,
         return_type: Option<Type>,
         body: Vec<Statement>,
+        span: Span,
     },
 
     Range {
         start: Option<Box<Expression>>,
         end: Option<Box<Expression>>,
         range_kind: RangeKind,
+        span: Span,
     },
 }
 
@@ -166,15 +196,26 @@ impl Parser {
         result
     }
     fn parse_expression_inner(&mut self, precedence: Precedence) -> Result<Expression, ParseError> {
+        let start_span = self.current_token.span;
+
         let mut left = match &self.current_token.token {
-            Token::Int(v) => Expression::IntLiteral(*v),
-            Token::Float32(v) => Expression::FloatLiteral(*v as f64),
-            Token::Float64(v) => Expression::FloatLiteral(*v),
+            Token::Int(v) => Expression::IntLiteral {
+                val: *v,
+                span: start_span,
+            },
+            Token::Float32(v) => Expression::FloatLiteral {
+                val: *v as f64,
+                span: start_span,
+            },
+            Token::Float64(v) => Expression::FloatLiteral {
+                val: *v,
+                span: start_span,
+            },
             Token::Identifier(s) => {
                 if self.allowed_struct_literal && matches!(self.peek_token.token, Token::LeftBrace)
                 {
-                    let name = match self.current_token.token.clone() {
-                        Token::Identifier(n) => n,
+                    let name = match &self.current_token.token {
+                        Token::Identifier(n) => n.clone(),
                         _ => return Err(self.unexpected(&self.current_token)),
                     };
                     self.next_token();
@@ -211,13 +252,26 @@ impl Parser {
 
                     self.skip_terminators();
 
-                    Expression::StructLiteral { name, fields }
+                    Expression::StructLiteral {
+                        name,
+                        fields,
+                        span: start_span,
+                    }
                 } else {
-                    Expression::Identifier(s.clone())
+                    Expression::Identifier {
+                        name: s.clone(),
+                        span: start_span,
+                    }
                 }
             }
-            Token::Bool(b) => Expression::BoolLiteral(*b),
-            Token::String(s) => Expression::StringLiteral(s.clone()),
+            Token::Bool(b) => Expression::BoolLiteral {
+                val: *b,
+                span: start_span,
+            },
+            Token::String(s) => Expression::StringLiteral {
+                val: s.clone(),
+                span: start_span,
+            },
             Token::LeftParen => {
                 self.next_token();
 
@@ -239,11 +293,12 @@ impl Parser {
 
                 self.next_token();
 
-                let right = self.parse_expression(Prefix)?;
+                let right = self.parse_expression(Precedence::Prefix)?;
 
                 Expression::Prefix {
                     operator,
                     right: Box::new(right),
+                    span: start_span,
                 }
             }
             Token::Match => self.parse_match_expression()?,
@@ -290,6 +345,7 @@ impl Parser {
                         left: Box::new(left),
                         operator,
                         right: Box::new(right),
+                        span: start_span,
                     };
                 }
                 Token::Decrement | Token::Increment | Token::Pipe => {
@@ -299,11 +355,12 @@ impl Parser {
                     left = Expression::Postfix {
                         left: Box::new(left),
                         operator,
+                        span: start_span,
                     }
                 }
                 Token::Dot => {
                     self.next_token();
-                    left = self.parse_dot(left)?;
+                    left = self.parse_dot(left, start_span)?;
                 }
                 Token::LeftParen => {
                     self.next_token();
@@ -311,6 +368,7 @@ impl Parser {
                     left = Expression::Call {
                         function: Box::new(left),
                         args,
+                        span: start_span,
                     };
                 }
                 Token::LeftBracket => {
@@ -327,6 +385,7 @@ impl Parser {
                     left = Expression::Call {
                         function: Box::new(right),
                         args: vec![left],
+                        span: start_span,
                     }
                 }
                 Token::LeftShift | Token::RightShift => {
@@ -340,10 +399,11 @@ impl Parser {
 
                     let right = self.parse_expression(peek_prec)?;
 
-                    left = Infix {
+                    left = Expression::Infix {
                         left: Box::new(left),
                         operator,
                         right: Box::new(right),
+                        span: start_span,
                     }
                 }
                 Token::Colon | Token::DoubleDot => {
@@ -358,6 +418,8 @@ impl Parser {
     }
 
     fn parse_index_expression(&mut self, left: Expression) -> Result<Expression, ParseError> {
+        let start_span = self.current_token.span;
+
         self.next_token();
 
         let index = self.parse_expression(Lowest)?;
@@ -370,10 +432,13 @@ impl Parser {
         Ok(Expression::Index {
             left: Box::new(left),
             index: Box::new(index),
+            span: start_span,
         })
     }
 
     pub fn parse_match_expression(&mut self) -> Result<Expression, ParseError> {
+        let start_span = self.current_token.span;
+
         self.expect(Token::Match)?;
 
         let saved = self.allowed_struct_literal;
@@ -397,7 +462,10 @@ impl Parser {
                 self.next_token();
                 let block_stmts = self.parse_block()?;
 
-                Expression::Block { body: block_stmts }
+                Expression::Block {
+                    body: block_stmts,
+                    span: start_span,
+                }
             } else {
                 let saved = self.allowed_struct_literal;
                 self.allowed_struct_literal = false;
@@ -408,7 +476,11 @@ impl Parser {
                 self.next_token();
                 e
             };
-            arms.push(MatchArm { pattern, body });
+            arms.push(MatchArm {
+                pattern,
+                body,
+                span: start_span,
+            });
             self.skip_arm_separators();
         }
 
@@ -419,10 +491,11 @@ impl Parser {
         Ok(Expression::Match {
             target: Box::new(target),
             arms,
+            span: start_span,
         })
     }
 
-    pub fn parse_dot(&mut self, left: Expression) -> Result<Expression, ParseError> {
+    pub fn parse_dot(&mut self, left: Expression, span: Span) -> Result<Expression, ParseError> {
         self.expect(Token::Dot)?;
         let name = match self.current_token.token.clone() {
             Token::Identifier(name) => name,
@@ -435,11 +508,13 @@ impl Parser {
                 object: Box::new(left),
                 name,
                 args,
+                span,
             })
         } else {
             Ok(Expression::Field {
                 object: Box::new(left),
                 name,
+                span,
             })
         }
     }
@@ -449,6 +524,8 @@ impl Parser {
     }
 
     pub fn parse_fun_params(&mut self) -> Result<Vec<FunParam>, ParseError> {
+        let start_span = self.current_token.span;
+
         let mut params = Vec::new();
 
         while !matches!(self.current_token.token, Token::RightParen) {
@@ -465,6 +542,7 @@ impl Parser {
             let param = FunParam {
                 name: param_name,
                 param_type,
+                span: start_span,
             };
 
             params.push(param);
@@ -493,6 +571,8 @@ impl Parser {
     }
 
     pub fn parse_lambda(&mut self) -> Result<Expression, ParseError> {
+        let start_span = self.current_token.span;
+
         self.expect(Token::Fun)?;
         self.expect(Token::LeftParen)?;
         let params = self.parse_fun_params()?;
@@ -511,10 +591,13 @@ impl Parser {
             params,
             return_type,
             body,
+            span: start_span,
         })
     }
 
     pub fn parse_infix_range(&mut self, left: Expression) -> Result<Expression, ParseError> {
+        let start_span = self.current_token.span;
+
         let range_kind = match self.current_token.token {
             Token::Colon => RangeKind::Exclusive,
             Token::DoubleDot => RangeKind::Inclusive,
@@ -539,12 +622,37 @@ impl Parser {
             start: Some(Box::new(left.clone())),
             end,
             range_kind,
+            span: start_span,
         })
     }
 
     fn skip_arm_separators(&mut self) {
         while matches!(self.current_token.token, Token::Newline | Token::Comma) {
             self.next_token();
+        }
+    }
+}
+
+impl Expression {
+    pub fn span(&self) -> Span {
+        match self {
+            Expression::Identifier { span, .. } => *span,
+            Expression::IntLiteral { span, .. } => *span,
+            Expression::FloatLiteral { span, .. } => *span,
+            Expression::BoolLiteral { span, .. } => *span,
+            Expression::StringLiteral { span, .. } => *span,
+            Expression::StructLiteral { span, .. } => *span,
+            Expression::Prefix { span, .. } => *span,
+            Expression::Infix { span, .. } => *span,
+            Expression::Postfix { span, .. } => *span,
+            Expression::Index { span, .. } => *span,
+            Expression::Call { span, .. } => *span,
+            Expression::Block { span, .. } => *span,
+            Expression::Match { span, .. } => *span,
+            Expression::Field { span, .. } => *span,
+            Expression::MethodCall { span, .. } => *span,
+            Expression::Lambda { span, .. } => *span,
+            Expression::Range { span, .. } => *span,
         }
     }
 }

@@ -2,9 +2,9 @@
 // Created by Krev3tka on 21.08.2026.
 //
 
-#include "vio_readln.h"
+#include "vio_scanln.h"
 
-VioString vio_readln() {
+VioString vio_scanln() {
     char* line = NULL;
     size_t cap = 0;
     ssize_t nread = getline(&line, &cap, stdin);

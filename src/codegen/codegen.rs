@@ -43,11 +43,12 @@ impl Codegen {
         self.checker.env.push();
 
         for s in &prg.declarations {
-            if let Statement::Const { name, value } = s {
+            if let Statement::Const { name, value, span } = s {
                 let val_str = self.emit_expression(value)?;
                 let ty = self.checker.infer(value);
 
-                self.checker.defined(name.clone(), ty, BindingKind::Const);
+                self.checker
+                    .defined(name.clone(), ty, BindingKind::Const, *span);
 
                 global_defines.push(format!("#define {} {}", name, val_str))
             }
@@ -55,6 +56,7 @@ impl Codegen {
                 name,
                 params,
                 return_type,
+                span,
                 ..
             } = s
             {
@@ -73,7 +75,7 @@ impl Codegen {
                 };
 
                 self.checker
-                    .defined(name.clone(), fn_ty.clone(), BindingKind::Var);
+                    .defined(name.clone(), fn_ty.clone(), BindingKind::Var, *span);
             }
         }
 
@@ -117,24 +119,24 @@ impl Codegen {
     }
 
     pub fn emit_expression(&mut self, expr: &Expression) -> Result<String, CodegenError> {
-        Ok(match expr.clone() {
-            Expression::IntLiteral(i) => i.to_string(),
-            Expression::FloatLiteral(f) => {
+        Ok(match expr {
+            Expression::IntLiteral { val: i, .. } => i.to_string(),
+            Expression::FloatLiteral { val: f, .. } => {
                 if f.fract() == 0.0 {
                     format!("{f:.1}")
                 } else {
                     f.to_string()
                 }
             }
-            Expression::BoolLiteral(b) => b.to_string(),
-            Expression::StringLiteral(s) => {
+            Expression::BoolLiteral { val: b, .. } => b.to_string(),
+            Expression::StringLiteral { val: s, .. } => {
                 let escaped = s.escape_default().to_string();
 
                 let byte_len = s.len();
 
                 format!("vio_str_from_literal(\"{}\", {})", escaped, byte_len)
             }
-            Expression::StructLiteral { name, fields } => {
+            Expression::StructLiteral { name, fields, .. } => {
                 let c_fields = fields
                     .iter()
                     .map(|f| {
@@ -147,7 +149,9 @@ impl Codegen {
 
                 format!("({}){{ .{} }}", name.clone(), c_fields)
             }
-            Expression::Prefix { operator, right } => {
+            Expression::Prefix {
+                operator, right, ..
+            } => {
                 format!(
                     "{}{}",
                     self.correlate_operator(&operator)?,
@@ -158,6 +162,7 @@ impl Codegen {
                 left,
                 operator,
                 right,
+                ..
             } => {
                 if matches!(operator, Token::Add)
                     && matches!(self.checker.infer(left.as_ref()), Ty::String)
@@ -185,16 +190,16 @@ impl Codegen {
                     self.emit_expression(right.as_ref())?
                 )
             }
-            Expression::Postfix { left, operator } => {
+            Expression::Postfix { left, operator, .. } => {
                 format!(
                     "{}{}",
                     self.emit_expression(left.as_ref())?,
-                    self.correlate_operator(&operator)?
+                    self.correlate_operator(operator)?
                 )
             }
-            Expression::Identifier(ident) => ident,
-            Expression::Call { function, args } => {
-                if let Expression::Identifier(name) = function.as_ref()
+            Expression::Identifier { name: ident, .. } => ident.clone(),
+            Expression::Call { function, args, .. } => {
+                if let Expression::Identifier { name, .. } = function.as_ref()
                     && (name == "print" || name == "println")
                     && args.len() == 1
                 {
@@ -216,8 +221,8 @@ impl Codegen {
                     return Ok(format!("vio_{name}_{suffix}({a})"));
                 }
 
-                if let Expression::Identifier(name) = function.as_ref()
-                    && name == "readln"
+                if let Expression::Identifier { name, .. } = function.as_ref()
+                    && name == "scanln"
                     && args.is_empty()
                 {
                     return Ok(format!("vio_{name}()"));
@@ -232,7 +237,7 @@ impl Codegen {
 
                 format!("{}({})", f, a)
             }
-            Expression::Field { object, name } => {
+            Expression::Field { object, name, .. } => {
                 format!("{}.{}", self.emit_expression(object.as_ref())?, name)
             }
             _ => {
@@ -246,9 +251,9 @@ impl Codegen {
 
     pub fn emit_statement(&mut self, stmt: &Statement) -> Result<String, CodegenError> {
         Ok(match stmt {
-            Statement::Let { name, value }
-            | Statement::Const { name, value }
-            | Statement::Var { name, value } => {
+            Statement::Let { name, value, span }
+            | Statement::Const { name, value, span }
+            | Statement::Var { name, value, span } => {
                 let val_str = self.emit_expression(value)?;
 
                 let ty = self.checker.infer(value);
@@ -261,6 +266,7 @@ impl Codegen {
                     } else {
                         BindingKind::Var
                     },
+                    *span,
                 );
 
                 let mut res = String::new();
@@ -274,6 +280,7 @@ impl Codegen {
                 then_block,
                 else_if,
                 else_block,
+                ..
             }) => {
                 self.checker.env.push();
 
@@ -307,7 +314,7 @@ impl Codegen {
 
                 res
             }
-            Statement::Return { value } => {
+            Statement::Return { value, .. } => {
                 let mut val_str = String::new();
                 if let Some(expr) = value {
                     val_str = format!(" {}", self.emit_expression(expr)?);
@@ -315,7 +322,7 @@ impl Codegen {
 
                 format!("return{};", val_str)
             }
-            Statement::Expression { expression } => {
+            Statement::Expression { expression, .. } => {
                 format!("{};", self.emit_expression(expression)?)
             }
             Statement::ForCondition { .. }
@@ -327,7 +334,10 @@ impl Codegen {
     }
 
     pub fn emit_for(&mut self, stmt: &Statement) -> Result<String, CodegenError> {
-        if let Statement::ForCondition { condition, body } = stmt {
+        if let Statement::ForCondition {
+            condition, body, ..
+        } = stmt
+        {
             self.checker.env.push();
 
             let cond = self.emit_expression(condition)?;
@@ -342,6 +352,7 @@ impl Codegen {
             condition,
             post,
             body,
+            ..
         } = stmt
         {
             self.checker.env.push();
@@ -364,6 +375,7 @@ impl Codegen {
             variable,
             iterable,
             body,
+            span,
         } = stmt
         {
             self.checker.env.push();
@@ -373,6 +385,7 @@ impl Codegen {
                     start,
                     end,
                     range_kind,
+                    ..
                 } => (
                     start
                         .as_ref()
@@ -395,7 +408,7 @@ impl Codegen {
             };
 
             self.checker
-                .defined(variable.clone(), Ty::Int, BindingKind::Var);
+                .defined(variable.clone(), Ty::Int, BindingKind::Var, *span);
             let body_str = self.emit_block(body)?;
 
             self.checker.env.pop();
@@ -415,6 +428,7 @@ impl Codegen {
             params,
             return_type,
             body,
+            span,
         } = stmt
         {
             self.checker.env.push();
@@ -426,7 +440,7 @@ impl Codegen {
 
             for (p, param_ty) in params.iter().zip(param_tys.iter()) {
                 self.checker
-                    .defined(p.name.clone(), param_ty.clone(), BindingKind::Var)
+                    .defined(p.name.clone(), param_ty.clone(), BindingKind::Var, *span)
             }
 
             let mut ret = if name == "main" {
@@ -442,10 +456,14 @@ impl Codegen {
 
             let parameters = params
                 .iter()
-                .map(|FunParam { name, param_type }| {
-                    let ty = self.checker.resolve(param_type);
-                    format!("{} {}", self.c_type(&ty), name.clone())
-                })
+                .map(
+                    |FunParam {
+                         name, param_type, ..
+                     }| {
+                        let ty = self.checker.resolve(param_type);
+                        format!("{} {}", self.c_type(&ty), name.clone())
+                    },
+                )
                 .collect::<Vec<String>>()
                 .join(", ");
 
@@ -464,7 +482,7 @@ impl Codegen {
     }
 
     pub fn emit_struct(&mut self, stmt: &Statement) -> Result<String, CodegenError> {
-        if let Statement::Struct { name, fields } = stmt {
+        if let Statement::Struct { name, fields, span } = stmt {
             self.checker.env.push();
 
             let field_tys: Vec<Ty> = fields
@@ -474,7 +492,7 @@ impl Codegen {
 
             for (f, field_ty) in fields.iter().zip(field_tys.iter()) {
                 self.checker
-                    .defined(f.name.clone(), field_ty.clone(), BindingKind::Var)
+                    .defined(f.name.clone(), field_ty.clone(), BindingKind::Var, *span)
             }
 
             let mut c_fields = fields
@@ -483,6 +501,7 @@ impl Codegen {
                     |StructParam {
                          name: n,
                          param_type,
+                         ..
                      }| {
                         let ty = self.checker.resolve(param_type);
                         format!("\t{} {}", self.c_type(&ty), n.clone())
@@ -510,9 +529,9 @@ impl Codegen {
         let mut string_vars: Vec<String> = Vec::new();
 
         for s in body {
-            if let Statement::Let { name, value }
-            | Statement::Const { name, value }
-            | Statement::Var { name, value } = s
+            if let Statement::Let { name, value, .. }
+            | Statement::Const { name, value, .. }
+            | Statement::Var { name, value, .. } = s
             {
                 let ty = self.checker.infer(value);
 

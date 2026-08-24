@@ -60,8 +60,8 @@ pub fn compile(command: &str, file: &str) {
     let println_c: &str = include_str!("../vio_helpers/vio_io/vio_println.c");
     let print_h: &str = include_str!("../vio_helpers/vio_io/vio_print.h");
     let print_c: &str = include_str!("../vio_helpers/vio_io/vio_print.c");
-    let readln_h: &str = include_str!("../vio_helpers/vio_io/vio_readln.h");
-    let readln_c: &str = include_str!("../vio_helpers/vio_io/vio_readln.c");
+    let scanln_h: &str = include_str!("../vio_helpers/vio_io/vio_scanln.h");
+    let scanln_c: &str = include_str!("../vio_helpers/vio_io/vio_scanln.c");
 
     let write_rt = |sub: &str, name: &str, content: &str| -> std::path::PathBuf {
         let dir = temp_dir.join(sub);
@@ -78,8 +78,8 @@ pub fn compile(command: &str, file: &str) {
     let print_c_path = write_rt("vio_io", "vio_print.c", print_c);
     write_rt("vio_io", "vio_print.h", print_h);
     let println_c_path = write_rt("vio_io", "vio_println.c", println_c);
-    write_rt("vio_io", "vio_readln.h", readln_h);
-    let readln_c_path = write_rt("vio_io", "vio_readln.c", readln_c);
+    write_rt("vio_io", "vio_scanln.h", scanln_h);
+    let scanln_c_path = write_rt("vio_io", "vio_scanln.c", scanln_c);
 
     let c_path = env::temp_dir().join(format!(
         "{}_vio_out.c",
@@ -101,7 +101,7 @@ pub fn compile(command: &str, file: &str) {
         .arg(&str_c_path)
         .arg(&print_c_path)
         .arg(&println_c_path)
-        .arg(&readln_c_path)
+        .arg(&scanln_c_path)
         .arg("-I")
         .arg(&temp_dir)
         .arg("-o")

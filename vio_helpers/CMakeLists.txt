@@ -8,9 +8,9 @@ add_executable(vio_helpers main.c
         vio_string/vio_string.c
         vio_io/vio_print.c
         vio_io/vio_print.h
-        vio_io/vio_readln.h
+        vio_io/vio_scanln.h
         vio_io/vio_println.c
         vio_io/vio_println.h
-        vio_io/vio_readln.c
+        vio_io/vio_scanln.c
         vio_runtime/runtime.h
 )

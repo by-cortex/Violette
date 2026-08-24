@@ -1,15 +1,14 @@
 #[cfg(test)]
 mod expressions_tests {
-    use crate::lexer::lexer::Lexer;
+    use crate::lexer::span::Span;
     use crate::lexer::token::Token;
     use crate::lexer::token::Token::{
         Add, Assign, Equals, Greater, LeftShift, LessOrEquals, LogicNot, Multiply, NotEquals,
         Power, RightShift, Subtract,
     };
     use crate::parser::Expression::{Call, Identifier, IntLiteral};
-    use crate::parser::parser::Parser;
     use crate::parser::statement::MatchArm;
-    use crate::parser::{Expression, Precedence};
+    use crate::parser::Expression;
     use crate::tests::helpers::{
         assert_expr_tests, assert_stmt_tests, block, boolean, call, expr_stmt, ident, infix, int,
         let_stmt, match_expr, prefix, string,
@@ -96,6 +95,7 @@ mod expressions_tests {
                             MatchArm {
                                 pattern: call(ident("Win"), vec![ident("u")]),
                                 body: ident("u"),
+                                span: Span::default(),
                             },
                             MatchArm {
                                 pattern: call(ident("Fail"), vec![ident("r")]),
@@ -106,6 +106,7 @@ mod expressions_tests {
                                     )),
                                     expr_stmt(call(ident("NewUser"), Vec::new())),
                                 ]),
+                                span: Span::default(),
                             },
                         ],
                     ),
@@ -132,17 +133,21 @@ mod expressions_tests {
                                     MatchArm {
                                         pattern: infix(ident("num"), Greater, int(5)),
                                         body: boolean(true),
+                                        span: Span::default(),
                                     },
                                     MatchArm {
                                         pattern: infix(ident("num"), LessOrEquals, int(5)),
                                         body: boolean(false),
+                                        span: Span::default(),
                                     },
                                 ],
                             ))]),
+                            span: Span::default(),
                         },
                         MatchArm {
                             pattern: call(ident("Fail"), vec![ident("r")]),
                             body: call(ident("print"), vec![ident("r")]),
+                            span: Span::default(),
                         },
                     ],
                 )),
@@ -156,36 +161,63 @@ mod expressions_tests {
             (
                 "a || b && c",
                 Expression::Infix {
-                    left: Box::new(Identifier("a".to_string())),
+                    left: Box::new(Identifier {
+                        name: "a".to_string(),
+                        span: Span::default(),
+                    }),
                     operator: Token::LogicOr,
                     right: Box::new(Expression::Infix {
-                        left: Box::new(Identifier("b".to_string())),
+                        left: Box::new(Identifier {
+                            name: "b".to_string(),
+                            span: Span::default(),
+                        }),
                         operator: Token::LogicAnd,
-                        right: Box::new(Identifier("c".to_string())),
+                        right: Box::new(Identifier {
+                            name: "c".to_string(),
+                            span: Span::default(),
+                        }),
+                        span: Span::default(),
                     }),
+                    span: Span::default(),
                 },
             ),
             (
                 "1 # 2 ^ 3 & 4",
                 Expression::Infix {
-                    left: Box::new(IntLiteral(1)),
+                    left: Box::new(IntLiteral {
+                        val: 1,
+                        span: Span::default(),
+                    }),
                     operator: Token::BitOr,
                     right: Box::new(Expression::Infix {
-                        left: Box::new(IntLiteral(2)),
+                        left: Box::new(IntLiteral {
+                            val: 2,
+                            span: Span::default(),
+                        }),
                         operator: Token::BitXOR,
                         right: Box::new(Expression::Infix {
-                            left: Box::new(IntLiteral(3)),
+                            left: Box::new(IntLiteral {
+                                val: 3,
+                                span: Span::default(),
+                            }),
                             operator: Token::BitAnd,
-                            right: Box::new(IntLiteral(4)),
+                            right: Box::new(IntLiteral {
+                                val: 4,
+                                span: Span::default(),
+                            }),
+                            span: Span::default(),
                         }),
+                        span: Span::default(),
                     }),
+                    span: Span::default(),
                 },
             ),
             (
                 "~x",
                 Expression::Prefix {
                     operator: Token::BitNot,
-                    right: Box::new(Identifier("x".to_string())),
+                    right: Box::new(ident("x")),
+                    span: Span::default(),
                 },
             ),
         ];
@@ -195,33 +227,38 @@ mod expressions_tests {
     fn piper() {
         let input = "match res {Win(v) => fetch(v)|, Fail(e) => e}";
         let expected = Expression::Match {
-            target: Box::new(Identifier("res".to_string())),
+            target: Box::new(ident("res")),
             arms: vec![
                 MatchArm {
                     pattern: Call {
-                        function: Box::new(Identifier("Win".to_string())),
-                        args: vec![Identifier("v".to_string())],
+                        function: Box::new(ident("Win")),
+                        args: vec![ident("v")],
+                        span: Span::default(),
                     },
                     body: Expression::Postfix {
                         left: Box::new(Call {
-                            function: Box::new(Identifier("fetch".to_string())),
-                            args: vec![Identifier("v".to_string())],
+                            function: Box::new(ident("fetch")),
+                            args: vec![ident("v")],
+                            span: Span::default(),
                         }),
                         operator: Token::Pipe,
+                        span: Span::default(),
                     },
+                    span: Span::default(),
                 },
                 MatchArm {
                     pattern: Call {
-                        function: Box::new(Identifier("Fail".to_string())),
-                        args: vec![Identifier("e".to_string())],
+                        function: Box::new(ident("Fail")),
+                        args: vec![ident("e")],
+                        span: Span::default(),
                     },
-                    body: Identifier("e".to_string()),
+                    body: ident("e"),
+                    span: Span::default(),
                 },
             ],
+            span: Span::default(),
         };
-        let lexer = Lexer::new(input);
-        let mut parser = Parser::new(lexer);
-        let actual = parser.parse_expression(Precedence::Lowest);
-        assert_eq!(actual.unwrap(), expected, "Failing case: {}", input);
+
+        assert_expr_tests(vec![(input, expected)]);
     }
 }

@@ -1,6 +1,6 @@
+use crate::lexer::span::Span;
 use crate::lexer::token::Token;
 use crate::parser::Precedence::Lowest;
-use crate::parser::Statement::{ForCondition, ForCounter};
 use crate::parser::parser::{MAX_DEPTH, Parser};
 use crate::parser::types::Type;
 use crate::parser::{Expression, ParseError};
@@ -9,21 +9,25 @@ use crate::parser::{Expression, ParseError};
 pub enum Statement {
     Expression {
         expression: Expression,
+        span: Span,
     },
 
     Var {
         name: String,
         value: Expression,
+        span: Span,
     },
 
     Let {
         name: String,
         value: Expression,
+        span: Span,
     },
 
     Const {
         name: String,
         value: Expression,
+        span: Span,
     },
 
     If(IfStatement),
@@ -31,12 +35,14 @@ pub enum Statement {
     ForCondition {
         condition: Expression,
         body: Vec<Statement>,
+        span: Span,
     },
 
     ForRange {
         variable: String,
         iterable: Expression,
         body: Vec<Statement>,
+        span: Span,
     },
 
     ForCounter {
@@ -44,10 +50,12 @@ pub enum Statement {
         condition: Expression,
         post: Expression,
         body: Vec<Statement>,
+        span: Span,
     },
 
     Return {
         value: Option<Expression>,
+        span: Span,
     },
 
     Fun {
@@ -55,11 +63,13 @@ pub enum Statement {
         params: Vec<FunParam>,
         return_type: Option<Type>,
         body: Vec<Statement>,
+        span: Span,
     },
 
     Struct {
         name: String,
         fields: Vec<FunParam>,
+        span: Span,
     },
 }
 
@@ -69,18 +79,21 @@ pub struct IfStatement {
     pub then_block: Vec<Statement>,
     pub else_if: Vec<ElseIf>,
     pub else_block: Vec<Statement>,
+    pub(crate) span: Span,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ElseIf {
     pub condition: Expression,
     pub block: Vec<Statement>,
+    pub(crate) span: Span,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct FunParam {
     pub name: String,
     pub param_type: Type,
+    pub(crate) span: Span,
 }
 
 pub type StructParam = FunParam;
@@ -89,6 +102,7 @@ pub type StructParam = FunParam;
 pub struct MatchArm {
     pub pattern: Expression,
     pub body: Expression,
+    pub(crate) span: Span,
 }
 
 impl Parser {
@@ -106,6 +120,7 @@ impl Parser {
         result
     }
     fn parse_statement_inner(&mut self) -> Result<Statement, ParseError> {
+        let span = self.current_token.span;
         match &self.current_token.token {
             Token::Var | Token::Let | Token::Const => {
                 let kw_token = self.current_token.token.clone();
@@ -125,9 +140,9 @@ impl Parser {
                 self.next_token();
 
                 match kw_token {
-                    Token::Var => Ok(Statement::Var { name, value }),
-                    Token::Let => Ok(Statement::Let { name, value }),
-                    Token::Const => Ok(Statement::Const { name, value }),
+                    Token::Var => Ok(Statement::Var { name, value, span }),
+                    Token::Let => Ok(Statement::Let { name, value, span }),
+                    Token::Const => Ok(Statement::Const { name, value, span }),
                     _ => unreachable!(),
                 }
             }
@@ -148,25 +163,32 @@ impl Parser {
                             self.current_token.token,
                             Token::Newline | Token::Eof | Token::RightBrace
                         ) {
-                            return Ok(Statement::Return { value: None });
+                            return Ok(Statement::Return { value: None, span });
                         }
 
                         return Err(e);
                     }
                 };
 
-                Ok(Statement::Return { value: Some(value) })
+                Ok(Statement::Return {
+                    value: Some(value),
+                    span,
+                })
             }
             Token::Struct => self.parse_struct(),
             _ => {
                 let expr = self.parse_expression(Lowest)?;
                 self.next_token();
-                Ok(Statement::Expression { expression: expr })
+                Ok(Statement::Expression {
+                    expression: expr,
+                    span,
+                })
             }
         }
     }
 
     pub fn parse_if_statement(&mut self) -> Result<Statement, ParseError> {
+        let span = self.current_token.span;
         self.expect(Token::If)?;
 
         let saved = self.allowed_struct_literal;
@@ -206,10 +228,13 @@ impl Parser {
             then_block,
             else_if,
             else_block,
+            span,
         }))
     }
 
     pub fn parse_else_if_statement(&mut self) -> Result<ElseIf, ParseError> {
+        let span = self.current_token.span;
+
         self.expect(Token::If)?;
 
         let saved = self.allowed_struct_literal;
@@ -222,7 +247,11 @@ impl Parser {
 
         let block = self.parse_block()?;
 
-        Ok(ElseIf { condition, block })
+        Ok(ElseIf {
+            condition,
+            block,
+            span,
+        })
     }
 
     pub fn parse_for_statement(&mut self) -> Result<Statement, ParseError> {
@@ -245,6 +274,8 @@ impl Parser {
     }
 
     pub fn parse_for_range(&mut self, var: &str) -> Result<Statement, ParseError> {
+        let span = self.current_token.span;
+
         let variable = var.to_owned();
 
         let saved = self.allowed_struct_literal;
@@ -268,10 +299,13 @@ impl Parser {
             variable,
             iterable,
             body,
+            span,
         })
     }
 
     pub fn parse_for_counter(&mut self, var: &str) -> Result<Statement, ParseError> {
+        let span = self.current_token.span;
+
         let name = var.to_owned();
         self.next_token();
         self.expect(Token::Assign)?;
@@ -281,7 +315,7 @@ impl Parser {
         let value = self.parse_expression(Lowest)?;
         self.allowed_struct_literal = saved;
 
-        let init = Box::new(Statement::Let { name, value });
+        let init = Box::new(Statement::Let { name, value, span });
 
         self.next_token();
 
@@ -319,15 +353,18 @@ impl Parser {
 
         let body = self.parse_block()?;
 
-        Ok(ForCounter {
+        Ok(Statement::ForCounter {
             init,
             condition,
             post,
             body,
+            span,
         })
     }
 
     pub fn parse_for_condition(&mut self) -> Result<Statement, ParseError> {
+        let span = self.current_token.span;
+
         let saved = self.allowed_struct_literal;
         self.allowed_struct_literal = false;
         let condition = self.parse_expression(Lowest)?;
@@ -342,10 +379,16 @@ impl Parser {
         self.next_token();
         let body = self.parse_block()?;
 
-        Ok(ForCondition { condition, body })
+        Ok(Statement::ForCondition {
+            condition,
+            body,
+            span,
+        })
     }
 
     pub fn parse_function(&mut self) -> Result<Statement, ParseError> {
+        let span = self.current_token.span;
+
         self.expect(Token::Fun)?;
 
         let name = match self.current_token.token.clone() {
@@ -374,10 +417,13 @@ impl Parser {
             params,
             return_type,
             body,
+            span,
         })
     }
 
     pub fn parse_struct(&mut self) -> Result<Statement, ParseError> {
+        let span = self.current_token.span;
+
         self.expect(Token::Struct)?;
 
         let name = match self.current_token.token.clone() {
@@ -403,6 +449,7 @@ impl Parser {
             let field = StructParam {
                 name: field_name,
                 param_type: field_type,
+                span,
             };
 
             fields.push(field);
@@ -421,7 +468,7 @@ impl Parser {
 
         self.expect(Token::RightBrace)?;
 
-        Ok(Statement::Struct { name, fields })
+        Ok(Statement::Struct { name, fields, span })
     }
 
     pub fn parse_package(&mut self) -> Result<String, ParseError> {
@@ -519,5 +566,23 @@ impl Parser {
 
     pub fn parse_top_level(&mut self) -> Result<Vec<Statement>, ParseError> {
         self.parse_statements()
+    }
+}
+
+impl Statement {
+    pub fn span(&self) -> Span {
+        match self {
+            Statement::Expression { span, .. } => *span,
+            Statement::Var { span, .. } => *span,
+            Statement::Let { span, .. } => *span,
+            Statement::Const { span, .. } => *span,
+            Statement::If(IfStatement { span, .. }) => *span,
+            Statement::ForCondition { span, .. } => *span,
+            Statement::ForRange { span, .. } => *span,
+            Statement::ForCounter { span, .. } => *span,
+            Statement::Return { span, .. } => *span,
+            Statement::Fun { span, .. } => *span,
+            Statement::Struct { span, .. } => *span,
+        }
     }
 }

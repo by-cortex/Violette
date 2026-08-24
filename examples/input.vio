@@ -2,10 +2,10 @@ package main
 
 fun main() {
     print("Enter your name: ")
-    let name = readln()
+    let name = scanln()
 
-    print("Enter your age:")
-    let age = readln()
+    print("Enter your age: ")
+    let age = scanln()
 
     println("Your name: " + name)
 

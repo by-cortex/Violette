@@ -9,6 +9,6 @@
 
 #include "../vio_string/vio_string.h"
 
-VioString vio_readln();
+VioString vio_scanln();
 
 #endif //VIO_HELPERS_VIO_READ_H

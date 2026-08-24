@@ -1,3 +1,4 @@
+use crate::lexer::span::Span;
 use crate::typechecker::error::{BindingKind, TypeError};
 use crate::typechecker::types::Ty;
 use std::collections::HashMap;
@@ -6,6 +7,7 @@ use std::collections::HashMap;
 pub struct EntityInfo {
     pub ty: Ty,
     pub kind: BindingKind,
+    pub span: Span,
 }
 #[derive(Default)]
 pub struct Env {
@@ -19,19 +21,29 @@ impl Env {
     pub fn pop(&mut self) {
         self.scopes.pop();
     }
-    pub fn define(&mut self, name: String, ty: Ty, kind: BindingKind) -> Result<(), TypeError> {
+    pub fn define(
+        &mut self,
+        name: String,
+        ty: Ty,
+        kind: BindingKind,
+        span: &Span,
+    ) -> Result<(), TypeError> {
         if self.scopes.is_empty() {
             self.push();
         }
 
         if self.scopes.last_mut().unwrap().contains_key(&name) {
-            return Err(TypeError::AlreadyDefined(name.clone()));
+            todo!()
         }
 
-        self.scopes
-            .last_mut()
-            .unwrap()
-            .insert(name, EntityInfo { ty, kind });
+        self.scopes.last_mut().unwrap().insert(
+            name,
+            EntityInfo {
+                ty,
+                kind,
+                span: *span,
+            },
+        );
 
         Ok(())
     }

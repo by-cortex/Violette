@@ -6,10 +6,15 @@ struct Point {
 }
 
 fun main() {
-    let p = Point {
+    let p1 = Point {
         r: 3.5,
         theta: 152.99
     }
 
-    println(p.r)
+    let p2 = Point {
+        r: 1.0,
+        theta: 15.64
+    }
+
+    println(p1.r)
 }

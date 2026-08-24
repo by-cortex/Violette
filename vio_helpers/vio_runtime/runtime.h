@@ -8,7 +8,7 @@
 #include "vio_string/vio_string.h"
 #include "vio_io/vio_print.h"
 #include "vio_io/vio_println.h"
-#include "vio_io/vio_readln.h"
+#include "vio_io/vio_scanln.h"
 
 #include <math.h>
 
